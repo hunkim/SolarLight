@@ -2,17 +2,34 @@
 
 A tiny macOS Spotlight-style chat app for Solar and other OpenAI-compatible streaming chat backends.
 
-## Run
+## Requirements
 
-Install Xcode or Apple Command Line Tools, then run:
+- macOS 13 or later
+- Xcode or Apple Command Line Tools
+- An Upstage API key, or credentials for another OpenAI-compatible chat provider
+
+## Quick Start
+
+Clone the repo, set an API key, and run the app from the terminal:
 
 ```sh
 export UPSTAGE_API_KEY=<your_upstage_api_key>
 swift run
 ```
 
-The default model is `solar-pro3` and the default base URL is `https://api.upstage.ai/v1`.
-You can still set `OPENAI_API_KEY`, `OPENAI_MODEL`, and `OPENAI_BASE_URL` for any OpenAI-compatible provider.
+SolarLight defaults to:
+
+- Base URL: `https://api.upstage.ai/v1`
+- Model: `solar-pro3`
+
+For another OpenAI-compatible provider, set:
+
+```sh
+export OPENAI_API_KEY=<your_api_key>
+export OPENAI_BASE_URL=<provider_base_url>
+export OPENAI_MODEL=<provider_model>
+swift run
+```
 
 On systems where the latest Command Line Tools expose a mismatched default SDK, use:
 
@@ -22,22 +39,56 @@ CLANG_MODULE_CACHE_PATH=/tmp/solarlight-clang-cache \
 swift run
 ```
 
-For a Finder-launched `.app`, put the same values in `~/.solarlight.env`:
-
-```sh
-UPSTAGE_API_KEY=<your_upstage_api_key>
-```
-
 You can also set the API key, base URL, and model from the gear button inside the app.
 
-To build a `.app` bundle:
+## Build the App Bundle
+
+To create a Finder-launchable `.app` bundle:
 
 ```sh
 chmod +x Scripts/package-app.sh
 Scripts/package-app.sh
 ```
 
-The bundle is created at `.build/SolarLight.app`.
+The bundle is created at:
+
+```sh
+.build/SolarLight.app
+```
+
+Finder does not inherit your terminal environment. Before launching the `.app` directly, either save credentials in the app settings or create `~/.solarlight.env`:
+
+```sh
+UPSTAGE_API_KEY=<your_upstage_api_key>
+```
+
+The env file also supports `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and `OPENAI_MODEL`.
+
+## Build a Downloadable DMG
+
+To create a downloadable disk image for GitHub releases:
+
+```sh
+chmod +x Scripts/package-dmg.sh
+Scripts/package-dmg.sh
+```
+
+The DMG is created at:
+
+```sh
+.build/SolarLight.dmg
+```
+
+Users can download `SolarLight.dmg`, open it, and drag `SolarLight.app` into Applications.
+
+This build is not notarized. On first launch, macOS may ask users to confirm they want to open an app downloaded from the internet.
+
+## GitHub Releases
+
+This repo includes a release workflow that builds `SolarLight.dmg`.
+
+- Run it manually from the GitHub Actions tab to download the DMG as a workflow artifact.
+- Push a version tag like `v0.1.0` to attach `SolarLight.dmg` to a GitHub Release.
 
 ## Use
 
