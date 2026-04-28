@@ -87,9 +87,11 @@ struct ChatClient {
         }
 
         return AsyncThrowingStream { continuation in
-            Task {
+            let decoder = JSONDecoder()
+            let task = Task {
                 do {
                     for try await line in bytes.lines {
+                        try Task.checkCancellation()
                         guard line.hasPrefix("data: ") else { continue }
 
                         let payload = String(line.dropFirst(6))
@@ -99,7 +101,7 @@ struct ChatClient {
                         }
 
                         guard let data = payload.data(using: .utf8) else { continue }
-                        let chunk = try JSONDecoder().decode(ChatStreamChunk.self, from: data)
+                        let chunk = try decoder.decode(ChatStreamChunk.self, from: data)
                         let delta = chunk.choices.first?.delta
 
                         if let annotations = delta?.annotations {
@@ -114,9 +116,15 @@ struct ChatClient {
                         }
                     }
                     continuation.finish()
+                } catch is CancellationError {
+                    continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
+            }
+
+            continuation.onTermination = { _ in
+                task.cancel()
             }
         }
     }

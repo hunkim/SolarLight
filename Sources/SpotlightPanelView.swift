@@ -57,27 +57,26 @@ struct SpotlightPanelView: View {
             Divider()
 
             GeometryReader { geometry in
-                if geometry.size.width >= 820, !viewModel.citations.isEmpty {
-                    HStack(alignment: .top, spacing: 0) {
+                let showRail = geometry.size.width >= 820 && !viewModel.citations.isEmpty
+                HStack(alignment: .top, spacing: 0) {
+                    VStack(spacing: 0) {
                         AnswerView(
                             text: outputText,
                             isPlaceholder: viewModel.response.isEmpty,
                             citations: viewModel.citations
                         )
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        if !showRail, !viewModel.citations.isEmpty {
+                            ReferencesStrip(citations: viewModel.citations)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
 
+                    if showRail {
                         Divider()
-
                         ReferencesRail(citations: viewModel.citations)
                             .frame(width: min(340, geometry.size.width * 0.34))
                             .frame(maxHeight: .infinity)
                     }
-                } else {
-                    AnswerView(
-                        text: outputText,
-                        isPlaceholder: viewModel.response.isEmpty,
-                        citations: viewModel.citations
-                    )
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -154,13 +153,14 @@ private struct MarkdownAnswer: View {
             ForEach(Array(MarkdownBlock.parse(text).enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .heading(let level, let text):
-                    InlineMarkdownText(text: text, citations: citations)
+                    Text(InlineMarkdown.attributed(text, citations: citations))
                         .font(.system(size: level == 1 ? 22 : 19, weight: .semibold))
                         .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, level == 1 ? 4 : 8)
 
                 case .paragraph(let text):
-                    InlineMarkdownText(text: text, citations: citations)
+                    Text(InlineMarkdown.attributed(text, citations: citations))
                         .font(.system(size: 16))
                         .lineSpacing(5)
                         .foregroundStyle(.primary)
@@ -173,7 +173,7 @@ private struct MarkdownAnswer: View {
                             .foregroundStyle(.secondary)
                             .frame(width: 14, alignment: .center)
 
-                        InlineMarkdownText(text: text, citations: citations)
+                        Text(InlineMarkdown.attributed(text, citations: citations))
                             .font(.system(size: 16))
                             .lineSpacing(5)
                             .foregroundStyle(.primary)
@@ -187,183 +187,56 @@ private struct MarkdownAnswer: View {
     }
 }
 
-private struct InlineMarkdownText: View {
-    let text: String
-    let citations: [ChatCitation]
-
-    var body: some View {
-        WrappingHStack(horizontalSpacing: 4, verticalSpacing: 6) {
-            ForEach(Array(InlineToken.parse(text).enumerated()), id: \.offset) { _, token in
-                switch token {
-                case .text(let markdown):
-                    inlineText(markdown)
-
-                case .citation(let number):
-                    CitationBadge(number: number, citation: citation(for: number))
-                }
-            }
-        }
-    }
-
-    private func citation(for number: Int) -> ChatCitation? {
-        let index = number - 1
-        guard citations.indices.contains(index) else {
-            return nil
-        }
-
-        return citations[index]
-    }
-
-    private func inlineText(_ markdown: String) -> Text {
-        if let attributed = try? AttributedString(
-            markdown: markdown,
-            options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        ) {
-            return Text(attributed)
-        }
-
-        return Text(markdown)
-    }
-}
-
-private enum InlineToken {
-    case text(String)
-    case citation(Int)
-
-    static func parse(_ markdown: String) -> [InlineToken] {
-        var tokens: [InlineToken] = []
+private enum InlineMarkdown {
+    static func attributed(_ text: String, citations: [ChatCitation]) -> AttributedString {
+        var result = AttributedString("")
         var buffer = ""
-        var index = markdown.startIndex
+        var index = text.startIndex
 
         func flushBuffer() {
             guard !buffer.isEmpty else { return }
-            tokens.append(contentsOf: textTokens(from: buffer))
+            let parsed = (try? AttributedString(
+                markdown: buffer,
+                options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+            )) ?? AttributedString(buffer)
+            result.append(parsed)
             buffer.removeAll()
         }
 
-        while index < markdown.endIndex {
-            let character = markdown[index]
+        while index < text.endIndex {
+            let character = text[index]
 
-            if character == "[" {
-                let closingIndex = markdown[index...].firstIndex(of: "]")
-                if let closingIndex {
-                    let valueStart = markdown.index(after: index)
-                    let value = String(markdown[valueStart..<closingIndex])
+            if character == "[",
+               let closingIndex = text[index...].firstIndex(of: "]") {
+                let valueStart = text.index(after: index)
+                let value = String(text[valueStart..<closingIndex])
 
-                    if let number = Int(value), number > 0 {
-                        flushBuffer()
-                        tokens.append(.citation(number))
-                        index = markdown.index(after: closingIndex)
-                        continue
-                    }
+                if let number = Int(value), number > 0 {
+                    flushBuffer()
+                    result.append(citationBadge(number: number, citations: citations))
+                    index = text.index(after: closingIndex)
+                    continue
                 }
             }
 
             buffer.append(character)
-            index = markdown.index(after: index)
+            index = text.index(after: index)
         }
 
         flushBuffer()
-        return tokens
+        return result
     }
 
-    private static func textTokens(from text: String) -> [InlineToken] {
-        var tokens: [InlineToken] = []
-        var current = ""
+    private static func citationBadge(number: Int, citations: [ChatCitation]) -> AttributedString {
+        var badge = AttributedString("\u{2009}[\(number)]")
+        badge.foregroundColor = .blue
+        badge.font = .system(size: 12, weight: .semibold)
 
-        for character in text {
-            current.append(character)
-
-            if character.isWhitespace {
-                tokens.append(.text(current))
-                current.removeAll()
-            }
+        if citations.indices.contains(number - 1) {
+            badge.link = citations[number - 1].url
         }
 
-        if !current.isEmpty {
-            tokens.append(.text(current))
-        }
-
-        return tokens
-    }
-}
-
-private struct CitationBadge: View {
-    let number: Int
-    let citation: ChatCitation?
-
-    var body: some View {
-        if let citation {
-            Link(destination: citation.url) {
-                badge
-            }
-            .buttonStyle(.plain)
-            .help(citation.title)
-        } else {
-            badge
-        }
-    }
-
-    private var badge: some View {
-        Text("\(number)")
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(.white)
-            .frame(width: 20, height: 20)
-            .background(.blue)
-            .clipShape(Circle())
-            .accessibilityLabel("Reference \(number)")
-    }
-}
-
-private struct WrappingHStack: Layout {
-    let horizontalSpacing: CGFloat
-    let verticalSpacing: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let maxWidth = proposal.width ?? .infinity
-        return layout(in: maxWidth, subviews: subviews).size
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let layout = layout(in: bounds.width, subviews: subviews)
-
-        for item in layout.items {
-            subviews[item.index].place(
-                at: CGPoint(x: bounds.minX + item.origin.x, y: bounds.minY + item.origin.y),
-                proposal: ProposedViewSize(item.size)
-            )
-        }
-    }
-
-    private func layout(in maxWidth: CGFloat, subviews: Subviews) -> (items: [Item], size: CGSize) {
-        var items: [Item] = []
-        var x: CGFloat = 0
-        var y: CGFloat = 0
-        var rowHeight: CGFloat = 0
-        var usedWidth: CGFloat = 0
-
-        for index in subviews.indices {
-            let size = subviews[index].sizeThatFits(.unspecified)
-
-            if x > 0, x + size.width > maxWidth {
-                x = 0
-                y += rowHeight + verticalSpacing
-                rowHeight = 0
-            }
-
-            items.append(Item(index: index, origin: CGPoint(x: x, y: y), size: size))
-            x += size.width + horizontalSpacing
-            rowHeight = max(rowHeight, size.height)
-            usedWidth = max(usedWidth, x - horizontalSpacing)
-        }
-
-        return (items, CGSize(width: usedWidth, height: y + rowHeight))
-    }
-
-    private struct Item {
-        let index: Int
-        let origin: CGPoint
-        let size: CGSize
+        return badge
     }
 }
 
@@ -429,6 +302,42 @@ private enum MarkdownBlock {
         }
 
         return String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+    }
+}
+
+private struct ReferencesStrip: View {
+    let citations: [ChatCitation]
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Array(citations.enumerated()), id: \.element.id) { index, citation in
+                    Link(destination: citation.url) {
+                        HStack(spacing: 6) {
+                            Text("\(index + 1)")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 16, height: 16)
+                                .background(.blue)
+                                .clipShape(Circle())
+
+                            Text(citation.url.host() ?? citation.title)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(.quaternary, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .help(citation.title)
+                }
+            }
+            .padding(.horizontal, 22)
+            .padding(.vertical, 10)
+        }
+        .background(.ultraThinMaterial)
     }
 }
 

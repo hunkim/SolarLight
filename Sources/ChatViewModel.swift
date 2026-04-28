@@ -18,6 +18,7 @@ final class ChatViewModel: ObservableObject {
     private var streamTask: Task<Void, Never>?
     private var debounceTask: Task<Void, Never>?
     private var updateCheckTask: Task<Void, Never>?
+    private var streamGeneration = 0
     private let updateManager = UpdateManager()
 
     func prepareForPresentation() {
@@ -99,40 +100,58 @@ final class ChatViewModel: ObservableObject {
         status = "Thinking"
         isStreaming = true
 
+        streamGeneration &+= 1
+        let generation = streamGeneration
+        let configuration = settings.snapshot()
+
         streamTask = Task { [weak self] in
             do {
-                let configuration = await MainActor.run {
-                    self?.settings.snapshot()
-                }
-                guard let configuration else { return }
-
                 let client = try ChatClient(configuration: configuration)
                 let stream = try await client.streamChat(prompt: prompt)
 
+                var pending = ""
+                var lastFlush = ContinuousClock.now
+
                 for try await event in stream {
-                    guard !Task.isCancelled else { return }
-                    await MainActor.run {
-                        switch event {
-                        case .citations(let citations):
-                            self?.mergeCitations(citations)
-                            self?.status = "Found references"
-                        case .content(let token):
-                            self?.response += token
-                            self?.status = "Streaming"
+                    if Task.isCancelled { return }
+
+                    switch event {
+                    case .citations(let citations):
+                        await MainActor.run {
+                            guard let self, self.streamGeneration == generation else { return }
+                            self.mergeCitations(citations)
+                            self.status = "Found references"
+                        }
+                    case .content(let token):
+                        pending += token
+                        let now = ContinuousClock.now
+                        if now - lastFlush > .milliseconds(50) {
+                            let toFlush = pending
+                            pending = ""
+                            lastFlush = now
+                            await MainActor.run {
+                                guard let self, self.streamGeneration == generation else { return }
+                                self.response += toFlush
+                                self.status = "Streaming"
+                            }
                         }
                     }
                 }
 
+                let finalPending = pending
                 await MainActor.run {
-                    self?.status = "Done"
-                    self?.isStreaming = false
+                    guard let self, self.streamGeneration == generation else { return }
+                    if !finalPending.isEmpty { self.response += finalPending }
+                    self.status = "Done"
+                    self.isStreaming = false
                 }
             } catch {
-                guard !Task.isCancelled else { return }
+                if Task.isCancelled { return }
                 await MainActor.run {
-                    self?.response = error.localizedDescription
-                    self?.status = "Error"
-                    self?.isStreaming = false
+                    guard let self, self.streamGeneration == generation else { return }
+                    self.response = error.localizedDescription
+                    self.status = "Error"
+                    self.isStreaming = false
                 }
             }
         }
