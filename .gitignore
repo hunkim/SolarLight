@@ -1,0 +1,11 @@
+.build/
+.swiftpm/
+.DS_Store
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+
+# Local credentials/configuration.
+.env
+.env.*
+*.env
