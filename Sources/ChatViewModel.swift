@@ -10,17 +10,42 @@ final class ChatViewModel: ObservableObject {
     @Published var isStreaming = false
     @Published var isShowingSettings = false
     @Published var focusToken = UUID()
+    @Published var availableUpdate: AvailableUpdate?
+    @Published var isCheckingForUpdate = false
+    @Published var isUpdating = false
 
     private var streamTask: Task<Void, Never>?
     private var debounceTask: Task<Void, Never>?
+    private var updateCheckTask: Task<Void, Never>?
+    private let updateManager = UpdateManager()
 
     func prepareForPresentation() {
         focusToken = UUID()
+        checkForUpdatesIfNeeded()
 
         if !settings.hasAPIKey {
             response = "Add your Upstage API key to start chatting."
             status = "Setup required"
             isShowingSettings = true
+        }
+    }
+
+    func installUpdate() {
+        guard let availableUpdate, !isUpdating else { return }
+
+        isUpdating = true
+        status = "Updating"
+
+        Task { [weak self] in
+            do {
+                try await self?.updateManager.install(availableUpdate)
+            } catch {
+                await MainActor.run {
+                    self?.response = error.localizedDescription
+                    self?.status = "Update failed"
+                    self?.isUpdating = false
+                }
+            }
         }
     }
 
@@ -99,6 +124,27 @@ final class ChatViewModel: ObservableObject {
                     self?.response = error.localizedDescription
                     self?.status = "Error"
                     self?.isStreaming = false
+                }
+            }
+        }
+    }
+
+    private func checkForUpdatesIfNeeded() {
+        guard availableUpdate == nil, updateCheckTask == nil, !isCheckingForUpdate else { return }
+
+        isCheckingForUpdate = true
+        updateCheckTask = Task { [weak self] in
+            do {
+                let update = try await self?.updateManager.checkForAvailableUpdate()
+                await MainActor.run {
+                    self?.availableUpdate = update
+                    self?.isCheckingForUpdate = false
+                    self?.updateCheckTask = nil
+                }
+            } catch {
+                await MainActor.run {
+                    self?.isCheckingForUpdate = false
+                    self?.updateCheckTask = nil
                 }
             }
         }

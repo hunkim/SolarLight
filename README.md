@@ -104,3 +104,9 @@ This repo includes a release workflow that builds `SolarLight.dmg`.
 - Press `Esc` or click away to close it.
 
 The app runs as an accessory app with a small menu bar item.
+
+## Updates
+
+When SolarLight is installed as a `.app`, it checks the latest GitHub Release when the panel opens. If a newer release includes a DMG, an Update button appears in the panel. Pressing it downloads the DMG, replaces the installed app, and relaunches SolarLight.
+
+Updates are skipped when running from `swift run` or directly from a mounted DMG.

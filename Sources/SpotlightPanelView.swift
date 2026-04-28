@@ -29,6 +29,18 @@ struct SpotlightPanelView: View {
                         .controlSize(.small)
                 }
 
+                if let availableUpdate = viewModel.availableUpdate {
+                    Button {
+                        viewModel.installUpdate()
+                    } label: {
+                        Label("Update", systemImage: "arrow.down.circle")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(viewModel.isUpdating)
+                    .help("Install SolarLight \(availableUpdate.version)")
+                }
+
                 Button {
                     viewModel.isShowingSettings = true
                 } label: {
