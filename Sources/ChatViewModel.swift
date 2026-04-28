@@ -24,12 +24,6 @@ final class ChatViewModel: ObservableObject {
     func prepareForPresentation() {
         focusToken = UUID()
         checkForUpdatesIfNeeded()
-
-        if !settings.hasAPIKey {
-            response = "Add your Upstage API key to start chatting."
-            status = "Setup required"
-            isShowingSettings = true
-        }
     }
 
     func installUpdate() {
@@ -56,8 +50,6 @@ final class ChatViewModel: ObservableObject {
             response = ""
             status = query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Type a question" : "Ready"
         }
-
-        prepareForPresentation()
     }
 
     func queryChanged() {
@@ -83,15 +75,6 @@ final class ChatViewModel: ObservableObject {
     func submit() {
         let prompt = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty else { return }
-        guard settings.hasAPIKey else {
-            debounceTask?.cancel()
-            streamTask?.cancel()
-            response = "Add your Upstage API key to start chatting."
-            status = "Setup required"
-            isStreaming = false
-            isShowingSettings = true
-            return
-        }
 
         debounceTask?.cancel()
         streamTask?.cancel()

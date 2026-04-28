@@ -14,14 +14,11 @@ enum ChatStreamEvent {
 
 struct ChatClient {
     enum ClientError: LocalizedError {
-        case missingAPIKey
         case invalidURL
         case badResponse(Int)
 
         var errorDescription: String? {
             switch self {
-            case .missingAPIKey:
-                return "Add an API key in settings to start chatting."
             case .invalidURL:
                 return "The base URL is not valid."
             case .badResponse(let statusCode):
@@ -36,9 +33,6 @@ struct ChatClient {
 
     init(environment: [String: String] = AppConfiguration.load()) throws {
         let apiKey = environment["OPENAI_API_KEY"] ?? environment["UPSTAGE_API_KEY"] ?? ""
-        guard !apiKey.isEmpty else {
-            throw ClientError.missingAPIKey
-        }
 
         let baseURLString = environment["OPENAI_BASE_URL"] ?? SolarDefaults.baseURL
         guard let baseURL = URL(string: baseURLString) else {
@@ -51,9 +45,6 @@ struct ChatClient {
     }
 
     init(configuration: ChatConfiguration) throws {
-        guard !configuration.apiKey.isEmpty else {
-            throw ClientError.missingAPIKey
-        }
         guard let baseURL = URL(string: configuration.baseURL) else {
             throw ClientError.invalidURL
         }
@@ -67,7 +58,9 @@ struct ChatClient {
         let url = baseURL.appending(path: "chat/completions")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        if !apiKey.isEmpty {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
 
