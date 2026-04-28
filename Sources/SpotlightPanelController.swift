@@ -32,7 +32,7 @@ final class SpotlightPanelController: NSObject, NSWindowDelegate {
         }
 
         let panel = SpotlightPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 720, height: 360),
+            contentRect: NSRect(x: 0, y: 0, width: 1080, height: 620),
             styleMask: [.borderless, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -52,8 +52,8 @@ final class SpotlightPanelController: NSObject, NSWindowDelegate {
         guard let screen = NSScreen.main else { return }
 
         let frame = screen.visibleFrame
-        let width = min(720, frame.width - 40)
-        let height: CGFloat = 360
+        let width = min(1080, frame.width - 40)
+        let height = min(CGFloat(620), frame.height - 120)
         let x = frame.midX - width / 2
         let y = frame.maxY - height - 110
 

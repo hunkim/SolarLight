@@ -56,20 +56,21 @@ struct SpotlightPanelView: View {
 
             Divider()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    if !viewModel.citations.isEmpty {
-                        ReferencesView(citations: viewModel.citations)
-                    }
+            GeometryReader { geometry in
+                if geometry.size.width >= 820, !viewModel.citations.isEmpty {
+                    HStack(alignment: .top, spacing: 0) {
+                        AnswerView(text: outputText, isPlaceholder: viewModel.response.isEmpty)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                    Text(outputText)
-                        .font(.system(size: 15))
-                        .foregroundStyle(viewModel.response.isEmpty ? .secondary : .primary)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Divider()
+
+                        ReferencesRail(citations: viewModel.citations)
+                            .frame(width: min(340, geometry.size.width * 0.34))
+                            .frame(maxHeight: .infinity)
+                    }
+                } else {
+                    AnswerView(text: outputText, isPlaceholder: viewModel.response.isEmpty)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(22)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -116,44 +117,92 @@ struct SpotlightPanelView: View {
     }
 }
 
-private struct ReferencesView: View {
+private struct AnswerView: View {
+    let text: String
+    let isPlaceholder: Bool
+
+    var body: some View {
+        ScrollView {
+            Text(text)
+                .font(.system(size: 16))
+                .lineSpacing(5)
+                .foregroundStyle(isPlaceholder ? .secondary : .primary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 28)
+                .padding(.vertical, 24)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct ReferencesRail: View {
     let citations: [ChatCitation]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("References")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.secondary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("References")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
 
-            VStack(alignment: .leading, spacing: 8) {
+                    Spacer()
+
+                    Text("\(citations.count)")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(.quaternary)
+                        .clipShape(Capsule())
+                }
+
                 ForEach(Array(citations.enumerated()), id: \.element.id) { index, citation in
-                    Link(destination: citation.url) {
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text("\(index + 1)")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 18, alignment: .trailing)
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(citation.title)
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(2)
-
-                                Text(citation.url.host() ?? citation.url.absoluteString)
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
+                    CitationCard(index: index + 1, citation: citation)
                 }
             }
-            .padding(12)
-            .background(.thinMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .padding(18)
         }
+        .background(.ultraThinMaterial)
+    }
+}
+
+private struct CitationCard: View {
+    let index: Int
+    let citation: ChatCitation
+
+    var body: some View {
+        Link(destination: citation.url) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(citation.title)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 8) {
+                    Text("\(index)")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 20, height: 20)
+                        .background(.blue)
+                        .clipShape(Circle())
+
+                    Text(citation.url.host() ?? citation.url.absoluteString)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 
