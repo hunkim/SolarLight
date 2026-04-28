@@ -59,7 +59,11 @@ struct SpotlightPanelView: View {
             GeometryReader { geometry in
                 if geometry.size.width >= 820, !viewModel.citations.isEmpty {
                     HStack(alignment: .top, spacing: 0) {
-                        AnswerView(text: outputText, isPlaceholder: viewModel.response.isEmpty)
+                        AnswerView(
+                            text: outputText,
+                            isPlaceholder: viewModel.response.isEmpty,
+                            citations: viewModel.citations
+                        )
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                         Divider()
@@ -69,7 +73,11 @@ struct SpotlightPanelView: View {
                             .frame(maxHeight: .infinity)
                     }
                 } else {
-                    AnswerView(text: outputText, isPlaceholder: viewModel.response.isEmpty)
+                    AnswerView(
+                        text: outputText,
+                        isPlaceholder: viewModel.response.isEmpty,
+                        citations: viewModel.citations
+                    )
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -120,6 +128,7 @@ struct SpotlightPanelView: View {
 private struct AnswerView: View {
     let text: String
     let isPlaceholder: Bool
+    let citations: [ChatCitation]
 
     var body: some View {
         ScrollView {
@@ -131,7 +140,7 @@ private struct AnswerView: View {
                     .padding(.horizontal, 28)
                     .padding(.vertical, 24)
             } else {
-                MarkdownAnswer(text: text)
+                MarkdownAnswer(text: text, citations: citations)
                     .padding(.horizontal, 28)
                     .padding(.vertical, 24)
             }
@@ -142,19 +151,20 @@ private struct AnswerView: View {
 
 private struct MarkdownAnswer: View {
     let text: String
+    let citations: [ChatCitation]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             ForEach(Array(MarkdownBlock.parse(text).enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .heading(let level, let text):
-                    inlineText(text)
+                    InlineMarkdownText(text: text, citations: citations)
                         .font(.system(size: level == 1 ? 22 : 19, weight: .semibold))
                         .foregroundStyle(.primary)
                         .padding(.top, level == 1 ? 4 : 8)
 
                 case .paragraph(let text):
-                    inlineText(text)
+                    InlineMarkdownText(text: text, citations: citations)
                         .font(.system(size: 16))
                         .lineSpacing(5)
                         .foregroundStyle(.primary)
@@ -167,7 +177,7 @@ private struct MarkdownAnswer: View {
                             .foregroundStyle(.secondary)
                             .frame(width: 14, alignment: .center)
 
-                        inlineText(text)
+                        InlineMarkdownText(text: text, citations: citations)
                             .font(.system(size: 16))
                             .lineSpacing(5)
                             .foregroundStyle(.primary)
@@ -179,6 +189,34 @@ private struct MarkdownAnswer: View {
         .textSelection(.enabled)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+}
+
+private struct InlineMarkdownText: View {
+    let text: String
+    let citations: [ChatCitation]
+
+    var body: some View {
+        WrappingHStack(horizontalSpacing: 4, verticalSpacing: 6) {
+            ForEach(Array(InlineToken.parse(text).enumerated()), id: \.offset) { _, token in
+                switch token {
+                case .text(let markdown):
+                    inlineText(markdown)
+
+                case .citation(let number):
+                    CitationBadge(number: number, citation: citation(for: number))
+                }
+            }
+        }
+    }
+
+    private func citation(for number: Int) -> ChatCitation? {
+        let index = number - 1
+        guard citations.indices.contains(index) else {
+            return nil
+        }
+
+        return citations[index]
+    }
 
     private func inlineText(_ markdown: String) -> Text {
         if let attributed = try? AttributedString(
@@ -189,6 +227,147 @@ private struct MarkdownAnswer: View {
         }
 
         return Text(markdown)
+    }
+}
+
+private enum InlineToken {
+    case text(String)
+    case citation(Int)
+
+    static func parse(_ markdown: String) -> [InlineToken] {
+        var tokens: [InlineToken] = []
+        var buffer = ""
+        var index = markdown.startIndex
+
+        func flushBuffer() {
+            guard !buffer.isEmpty else { return }
+            tokens.append(contentsOf: textTokens(from: buffer))
+            buffer.removeAll()
+        }
+
+        while index < markdown.endIndex {
+            let character = markdown[index]
+
+            if character == "[" {
+                let closingIndex = markdown[index...].firstIndex(of: "]")
+                if let closingIndex {
+                    let valueStart = markdown.index(after: index)
+                    let value = String(markdown[valueStart..<closingIndex])
+
+                    if let number = Int(value), number > 0 {
+                        flushBuffer()
+                        tokens.append(.citation(number))
+                        index = markdown.index(after: closingIndex)
+                        continue
+                    }
+                }
+            }
+
+            buffer.append(character)
+            index = markdown.index(after: index)
+        }
+
+        flushBuffer()
+        return tokens
+    }
+
+    private static func textTokens(from text: String) -> [InlineToken] {
+        var tokens: [InlineToken] = []
+        var current = ""
+
+        for character in text {
+            current.append(character)
+
+            if character.isWhitespace {
+                tokens.append(.text(current))
+                current.removeAll()
+            }
+        }
+
+        if !current.isEmpty {
+            tokens.append(.text(current))
+        }
+
+        return tokens
+    }
+}
+
+private struct CitationBadge: View {
+    let number: Int
+    let citation: ChatCitation?
+
+    var body: some View {
+        if let citation {
+            Link(destination: citation.url) {
+                badge
+            }
+            .buttonStyle(.plain)
+            .help(citation.title)
+        } else {
+            badge
+        }
+    }
+
+    private var badge: some View {
+        Text("\(number)")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: 20, height: 20)
+            .background(.blue)
+            .clipShape(Circle())
+            .accessibilityLabel("Reference \(number)")
+    }
+}
+
+private struct WrappingHStack: Layout {
+    let horizontalSpacing: CGFloat
+    let verticalSpacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        return layout(in: maxWidth, subviews: subviews).size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let layout = layout(in: bounds.width, subviews: subviews)
+
+        for item in layout.items {
+            subviews[item.index].place(
+                at: CGPoint(x: bounds.minX + item.origin.x, y: bounds.minY + item.origin.y),
+                proposal: ProposedViewSize(item.size)
+            )
+        }
+    }
+
+    private func layout(in maxWidth: CGFloat, subviews: Subviews) -> (items: [Item], size: CGSize) {
+        var items: [Item] = []
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var usedWidth: CGFloat = 0
+
+        for index in subviews.indices {
+            let size = subviews[index].sizeThatFits(.unspecified)
+
+            if x > 0, x + size.width > maxWidth {
+                x = 0
+                y += rowHeight + verticalSpacing
+                rowHeight = 0
+            }
+
+            items.append(Item(index: index, origin: CGPoint(x: x, y: y), size: size))
+            x += size.width + horizontalSpacing
+            rowHeight = max(rowHeight, size.height)
+            usedWidth = max(usedWidth, x - horizontalSpacing)
+        }
+
+        return (items, CGSize(width: usedWidth, height: y + rowHeight))
+    }
+
+    private struct Item {
+        let index: Int
+        let origin: CGPoint
+        let size: CGSize
     }
 }
 
