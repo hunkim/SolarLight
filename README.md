@@ -19,8 +19,8 @@ swift run
 
 SolarLight defaults to:
 
-- Base URL: `https://api.upstage.ai/v1`
-- Model: `solar-pro3`
+- Base URL: `https://web-search-api.toy.x.upstage.ai/v1`
+- Model: `solar-pro3-search`
 
 For another OpenAI-compatible provider, set:
 

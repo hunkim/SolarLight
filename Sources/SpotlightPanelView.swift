@@ -140,13 +140,13 @@ private struct SettingsView: View {
                 }
 
                 LabeledContent("Base URL") {
-                    TextField("https://api.upstage.ai/v1", text: $settings.baseURL)
+                    TextField(SolarDefaults.baseURL, text: $settings.baseURL)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 360)
                 }
 
                 LabeledContent("Model") {
-                    TextField("solar-pro3", text: $settings.model)
+                    TextField(SolarDefaults.model, text: $settings.model)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 360)
                 }

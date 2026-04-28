@@ -28,14 +28,14 @@ struct ChatClient {
             throw ClientError.missingAPIKey
         }
 
-        let baseURLString = environment["OPENAI_BASE_URL"] ?? "https://api.upstage.ai/v1"
+        let baseURLString = environment["OPENAI_BASE_URL"] ?? SolarDefaults.baseURL
         guard let baseURL = URL(string: baseURLString) else {
             throw ClientError.invalidURL
         }
 
         self.apiKey = apiKey
         self.baseURL = baseURL
-        self.model = environment["OPENAI_MODEL"] ?? "solar-pro3"
+        self.model = environment["OPENAI_MODEL"] ?? SolarDefaults.model
     }
 
     init(configuration: ChatConfiguration) throws {
@@ -48,7 +48,7 @@ struct ChatClient {
 
         self.apiKey = configuration.apiKey
         self.baseURL = baseURL
-        self.model = configuration.model.isEmpty ? "solar-pro3" : configuration.model
+        self.model = configuration.model.isEmpty ? SolarDefaults.model : configuration.model
     }
 
     func streamChat(prompt: String) async throws -> AsyncThrowingStream<String, Error> {
