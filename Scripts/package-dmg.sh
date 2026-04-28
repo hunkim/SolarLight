@@ -5,7 +5,14 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_DIR="$ROOT_DIR/.build"
 APP_DIR="$BUILD_DIR/SolarLight.app"
 DMG_STAGING_DIR="$BUILD_DIR/dmg"
-DMG_PATH="$BUILD_DIR/SolarLight.dmg"
+VERSION="${SOLARLIGHT_VERSION:-}"
+DMG_NAME="SolarLight"
+
+if [[ -n "$VERSION" ]]; then
+  DMG_NAME="SolarLight-$VERSION"
+fi
+
+DMG_PATH="$BUILD_DIR/$DMG_NAME.dmg"
 
 "$ROOT_DIR/Scripts/package-app.sh" >/dev/null
 

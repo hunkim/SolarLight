@@ -79,7 +79,13 @@ The DMG is created at:
 .build/SolarLight.dmg
 ```
 
-Users can download `SolarLight.dmg`, open it, and drag `SolarLight.app` into Applications.
+Set `SOLARLIGHT_VERSION` to include a version in the app metadata and DMG filename:
+
+```sh
+SOLARLIGHT_VERSION=0.1.0 Scripts/package-dmg.sh
+```
+
+That creates `.build/SolarLight-0.1.0.dmg`. Users can download the DMG, open it, and drag `SolarLight.app` into Applications.
 
 This build is not notarized. On first launch, macOS may ask users to confirm they want to open an app downloaded from the internet.
 
