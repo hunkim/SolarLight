@@ -5,29 +5,54 @@ A tiny macOS Spotlight-style chat app for Solar and other OpenAI-compatible stre
 ## Requirements
 
 - macOS 13 or later
-- Xcode or Apple Command Line Tools
 - An Upstage API key, or credentials for another OpenAI-compatible chat provider
 
-## Quick Start
+## Download and Install
 
-Clone the repo, set an API key, and run the app from the terminal:
+1. Open the [latest SolarLight release](https://github.com/hunkim/SolarLight/releases/latest).
+2. Download the `.dmg` file, for example `SolarLight-0.1.9.dmg`.
+3. Open the DMG.
+4. Drag `SolarLight.app` into the Applications folder.
+5. Open SolarLight from Applications.
+6. Click the gear button and enter your Upstage API key.
 
-```sh
-export UPSTAGE_API_KEY=<your_upstage_api_key>
-swift run
-```
+On first launch, macOS may ask you to confirm that you want to open an app downloaded from the internet.
 
 SolarLight defaults to:
 
 - Base URL: `https://web-search-api.toy.x.upstage.ai/v1`
 - Model: `solar-pro3-search`
 
-For another OpenAI-compatible provider, set:
+After setup, press `Cmd-L` to open or hide the floating search window.
+
+## Use Another Provider
+
+SolarLight works with OpenAI-compatible chat APIs. Open settings with the gear button and change:
+
+- API key
+- Base URL
+- Model
+
+For Upstage web search, use:
+
+- Base URL: `https://web-search-api.toy.x.upstage.ai/v1`
+- Model: `solar-pro3-search`
+
+## Develop from Source
+
+To run from source, install Xcode or Apple Command Line Tools, then clone the repo and run:
 
 ```sh
 export OPENAI_API_KEY=<your_api_key>
 export OPENAI_BASE_URL=<provider_base_url>
 export OPENAI_MODEL=<provider_model>
+swift run
+```
+
+For Upstage, you can also use:
+
+```sh
+export UPSTAGE_API_KEY=<your_upstage_api_key>
 swift run
 ```
 

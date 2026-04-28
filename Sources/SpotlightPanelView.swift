@@ -121,7 +121,7 @@ struct SpotlightPanelView: View {
     }
 
     private var outputText: String {
-        viewModel.response.isEmpty ? "Response will stream here." : viewModel.response
+        viewModel.response
     }
 }
 
@@ -133,12 +133,8 @@ private struct AnswerView: View {
     var body: some View {
         ScrollView {
             if isPlaceholder {
-                Text(text)
-                    .font(.system(size: 16))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 28)
-                    .padding(.vertical, 24)
+                Color.clear
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 MarkdownAnswer(text: text, citations: citations)
                     .padding(.horizontal, 28)
