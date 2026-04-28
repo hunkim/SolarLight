@@ -138,6 +138,19 @@ private struct SettingsView: View {
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 360)
                 }
+
+                Toggle("Run at startup", isOn: Binding(
+                    get: { settings.runAtStartup },
+                    set: { settings.setRunAtStartup($0) }
+                ))
+                .padding(.top, 4)
+
+                if let startupError = settings.startupError {
+                    Text(startupError)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
 
             HStack {
@@ -157,6 +170,7 @@ private struct SettingsView: View {
         .padding(22)
         .frame(width: 520)
         .onAppear {
+            settings.refreshStartupState()
             DispatchQueue.main.async {
                 isAPIKeyFocused = true
             }
