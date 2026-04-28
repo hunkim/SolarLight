@@ -57,12 +57,19 @@ struct SpotlightPanelView: View {
             Divider()
 
             ScrollView {
-                Text(outputText)
-                    .font(.system(size: 15))
-                    .foregroundStyle(viewModel.response.isEmpty ? .secondary : .primary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(22)
+                VStack(alignment: .leading, spacing: 18) {
+                    if !viewModel.citations.isEmpty {
+                        ReferencesView(citations: viewModel.citations)
+                    }
+
+                    Text(outputText)
+                        .font(.system(size: 15))
+                        .foregroundStyle(viewModel.response.isEmpty ? .secondary : .primary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(22)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -106,6 +113,47 @@ struct SpotlightPanelView: View {
 
     private var outputText: String {
         viewModel.response.isEmpty ? "Response will stream here." : viewModel.response
+    }
+}
+
+private struct ReferencesView: View {
+    let citations: [ChatCitation]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("References")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(citations.enumerated()), id: \.element.id) { index, citation in
+                    Link(destination: citation.url) {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text("\(index + 1)")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 18, alignment: .trailing)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(citation.title)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(2)
+
+                                Text(citation.url.host() ?? citation.url.absoluteString)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(12)
+            .background(.thinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
     }
 }
 

@@ -6,6 +6,7 @@ final class ChatViewModel: ObservableObject {
 
     @Published var query = ""
     @Published var response = ""
+    @Published var citations: [ChatCitation] = []
     @Published var status = "Type a question"
     @Published var isStreaming = false
     @Published var isShowingSettings = false
@@ -65,6 +66,7 @@ final class ChatViewModel: ObservableObject {
         guard !trimmed.isEmpty else {
             streamTask?.cancel()
             response = ""
+            citations = []
             status = "Type a question"
             isStreaming = false
             return
@@ -93,6 +95,7 @@ final class ChatViewModel: ObservableObject {
         debounceTask?.cancel()
         streamTask?.cancel()
         response = ""
+        citations = []
         status = "Thinking"
         isStreaming = true
 
@@ -106,11 +109,17 @@ final class ChatViewModel: ObservableObject {
                 let client = try ChatClient(configuration: configuration)
                 let stream = try await client.streamChat(prompt: prompt)
 
-                for try await token in stream {
+                for try await event in stream {
                     guard !Task.isCancelled else { return }
                     await MainActor.run {
-                        self?.response += token
-                        self?.status = "Streaming"
+                        switch event {
+                        case .citations(let citations):
+                            self?.mergeCitations(citations)
+                            self?.status = "Found references"
+                        case .content(let token):
+                            self?.response += token
+                            self?.status = "Streaming"
+                        }
                     }
                 }
 
@@ -126,6 +135,14 @@ final class ChatViewModel: ObservableObject {
                     self?.isStreaming = false
                 }
             }
+        }
+    }
+
+    private func mergeCitations(_ newCitations: [ChatCitation]) {
+        var seen = Set(citations.map(\.url))
+        for citation in newCitations where !seen.contains(citation.url) {
+            citations.append(citation)
+            seen.insert(citation.url)
         }
     }
 

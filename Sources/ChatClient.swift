@@ -1,5 +1,17 @@
 import Foundation
 
+struct ChatCitation: Identifiable, Equatable {
+    var id: String { url.absoluteString }
+
+    let title: String
+    let url: URL
+}
+
+enum ChatStreamEvent {
+    case citations([ChatCitation])
+    case content(String)
+}
+
 struct ChatClient {
     enum ClientError: LocalizedError {
         case missingAPIKey
@@ -51,7 +63,7 @@ struct ChatClient {
         self.model = configuration.model.isEmpty ? SolarDefaults.model : configuration.model
     }
 
-    func streamChat(prompt: String) async throws -> AsyncThrowingStream<String, Error> {
+    func streamChat(prompt: String) async throws -> AsyncThrowingStream<ChatStreamEvent, Error> {
         let url = baseURL.appending(path: "chat/completions")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -88,8 +100,17 @@ struct ChatClient {
 
                         guard let data = payload.data(using: .utf8) else { continue }
                         let chunk = try JSONDecoder().decode(ChatStreamChunk.self, from: data)
-                        if let content = chunk.choices.first?.delta.content {
-                            continuation.yield(content)
+                        let delta = chunk.choices.first?.delta
+
+                        if let annotations = delta?.annotations {
+                            let citations = annotations.compactMap(\.citation)
+                            if !citations.isEmpty {
+                                continuation.yield(.citations(citations))
+                            }
+                        }
+
+                        if let content = delta?.content {
+                            continuation.yield(.content(content))
                         }
                     }
                     continuation.finish()
@@ -164,10 +185,47 @@ private struct ChatStreamChunk: Decodable {
     struct Choice: Decodable {
         struct Delta: Decodable {
             let content: String?
+            let annotations: [Annotation]?
         }
 
         let delta: Delta
     }
 
     let choices: [Choice]
+}
+
+private struct Annotation: Decodable {
+    struct URLCitation: Decodable {
+        let title: String
+        let url: URL
+    }
+
+    let type: String
+    let urlCitation: URLCitation?
+
+    var citation: ChatCitation? {
+        guard type == "url_citation", let urlCitation else {
+            return nil
+        }
+
+        return ChatCitation(
+            title: urlCitation.title.decodingHTMLEntities(),
+            url: urlCitation.url
+        )
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case urlCitation = "url_citation"
+    }
+}
+
+private extension String {
+    func decodingHTMLEntities() -> String {
+        replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&#39;", with: "'")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+    }
 }
