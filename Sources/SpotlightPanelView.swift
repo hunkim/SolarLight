@@ -123,16 +123,137 @@ private struct AnswerView: View {
 
     var body: some View {
         ScrollView {
-            Text(text)
-                .font(.system(size: 16))
-                .lineSpacing(5)
-                .foregroundStyle(isPlaceholder ? .secondary : .primary)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 28)
-                .padding(.vertical, 24)
+            if isPlaceholder {
+                Text(text)
+                    .font(.system(size: 16))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 24)
+            } else {
+                MarkdownAnswer(text: text)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 24)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct MarkdownAnswer: View {
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(Array(MarkdownBlock.parse(text).enumerated()), id: \.offset) { _, block in
+                switch block {
+                case .heading(let level, let text):
+                    inlineText(text)
+                        .font(.system(size: level == 1 ? 22 : 19, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .padding(.top, level == 1 ? 4 : 8)
+
+                case .paragraph(let text):
+                    inlineText(text)
+                        .font(.system(size: 16))
+                        .lineSpacing(5)
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                case .bullet(let text):
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text("•")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 14, alignment: .center)
+
+                        inlineText(text)
+                            .font(.system(size: 16))
+                            .lineSpacing(5)
+                            .foregroundStyle(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+        .textSelection(.enabled)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func inlineText(_ markdown: String) -> Text {
+        if let attributed = try? AttributedString(
+            markdown: markdown,
+            options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        ) {
+            return Text(attributed)
+        }
+
+        return Text(markdown)
+    }
+}
+
+private enum MarkdownBlock {
+    case heading(level: Int, text: String)
+    case paragraph(String)
+    case bullet(String)
+
+    static func parse(_ markdown: String) -> [MarkdownBlock] {
+        var blocks: [MarkdownBlock] = []
+        var paragraphLines: [String] = []
+
+        func flushParagraph() {
+            guard !paragraphLines.isEmpty else { return }
+            blocks.append(.paragraph(paragraphLines.joined(separator: " ")))
+            paragraphLines.removeAll()
+        }
+
+        for rawLine in markdown.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+
+            guard !line.isEmpty else {
+                flushParagraph()
+                continue
+            }
+
+            if let heading = parseHeading(line) {
+                flushParagraph()
+                blocks.append(.heading(level: heading.level, text: heading.text))
+                continue
+            }
+
+            if let bullet = parseBullet(line) {
+                flushParagraph()
+                blocks.append(.bullet(bullet))
+                continue
+            }
+
+            paragraphLines.append(line)
+        }
+
+        flushParagraph()
+        return blocks
+    }
+
+    private static func parseHeading(_ line: String) -> (level: Int, text: String)? {
+        let prefix = line.prefix { $0 == "#" }
+        guard !prefix.isEmpty, prefix.count <= 3 else {
+            return nil
+        }
+
+        let rest = line.dropFirst(prefix.count)
+        guard rest.first == " " else {
+            return nil
+        }
+
+        return (prefix.count, rest.trimmingCharacters(in: .whitespaces))
+    }
+
+    private static func parseBullet(_ line: String) -> String? {
+        guard line.hasPrefix("- ") || line.hasPrefix("* ") else {
+            return nil
+        }
+
+        return String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces)
     }
 }
 
@@ -206,7 +327,7 @@ private struct CitationCard: View {
     }
 }
 
-private struct SettingsView: View {
+struct SettingsView: View {
     @ObservedObject var settings: ChatSettings
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isAPIKeyFocused: Bool

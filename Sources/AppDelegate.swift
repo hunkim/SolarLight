@@ -21,6 +21,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotKeyManager?.register()
 
         installMenuBarItem()
+
+        DispatchQueue.main.async {
+            controller.show()
+        }
     }
 
     private func installMenuBarItem() {
