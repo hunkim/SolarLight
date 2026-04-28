@@ -20,6 +20,7 @@ swift build -c release
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp "$ROOT_DIR/.build/release/SolarLight" "$MACOS_DIR/SolarLight"
+cp "$ROOT_DIR/Assets/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
 
 cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -30,6 +31,8 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
   <string>SolarLight</string>
   <key>CFBundleIdentifier</key>
   <string>local.solarlight.app</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundleName</key>
   <string>SolarLight</string>
   <key>CFBundlePackageType</key>
