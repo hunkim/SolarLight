@@ -33,7 +33,7 @@ struct SpotlightPanelView: View {
                     Button {
                         viewModel.installUpdate()
                     } label: {
-                        Label("Update", systemImage: "arrow.down.circle")
+                        Label("Update \(availableUpdate.version)", systemImage: "arrow.down.circle")
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
