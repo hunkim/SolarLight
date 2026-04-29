@@ -34,19 +34,6 @@ struct ChatClient {
     private let baseURL: URL
     private let model: String
 
-    init(environment: [String: String] = AppConfiguration.load()) throws {
-        let apiKey = environment["OPENAI_API_KEY"] ?? environment["UPSTAGE_API_KEY"] ?? ""
-
-        let baseURLString = environment["OPENAI_BASE_URL"] ?? SolarDefaults.baseURL
-        guard let baseURL = URL(string: baseURLString) else {
-            throw ClientError.invalidURL
-        }
-
-        self.apiKey = apiKey
-        self.baseURL = baseURL
-        self.model = environment["OPENAI_MODEL"] ?? SolarDefaults.model
-    }
-
     init(configuration: ChatConfiguration) throws {
         guard let baseURL = URL(string: configuration.baseURL) else {
             throw ClientError.invalidURL

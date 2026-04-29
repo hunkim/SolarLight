@@ -61,7 +61,7 @@ struct SpotlightPanelView: View {
                 HStack(alignment: .top, spacing: 0) {
                     VStack(spacing: 0) {
                         AnswerView(
-                            text: outputText,
+                            text: viewModel.response,
                             isPlaceholder: viewModel.response.isEmpty,
                             citations: viewModel.citations
                         )
@@ -117,10 +117,6 @@ struct SpotlightPanelView: View {
                     viewModel.settingsDidClose()
                 }
         }
-    }
-
-    private var outputText: String {
-        viewModel.response
     }
 }
 

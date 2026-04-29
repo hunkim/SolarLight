@@ -1,6 +1,8 @@
 import Carbon
 import Foundation
 
+// All HotKeyManager methods and the static state below assume main-thread access.
+// Carbon delivers hotkey events on the main thread, so the callback dispatch is safe.
 final class HotKeyManager {
     private static var callbacks: [UInt32: () -> Void] = [:]
     private static var eventHandler: EventHandlerRef?
