@@ -63,7 +63,10 @@ struct SpotlightPanelView: View {
                         AnswerView(
                             text: viewModel.response,
                             isPlaceholder: viewModel.response.isEmpty,
-                            citations: viewModel.citations
+                            citations: viewModel.citations,
+                            isSharing: viewModel.isSharing,
+                            copy: { viewModel.copyResponse() },
+                            share: { viewModel.shareResponse() }
                         )
                         if !showRail, !viewModel.citations.isEmpty {
                             ReferencesStrip(citations: viewModel.citations)
@@ -124,19 +127,76 @@ private struct AnswerView: View {
     let text: String
     let isPlaceholder: Bool
     let citations: [ChatCitation]
+    let isSharing: Bool
+    let copy: () -> Void
+    let share: () -> Void
 
     var body: some View {
-        ScrollView {
-            if isPlaceholder {
-                Color.clear
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                MarkdownAnswer(text: text, citations: citations)
-                    .padding(.horizontal, 28)
-                    .padding(.vertical, 24)
+        ZStack(alignment: .topTrailing) {
+            ScrollView {
+                if isPlaceholder {
+                    Color.clear
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    MarkdownAnswer(text: text, citations: citations)
+                        .padding(.horizontal, 28)
+                        .padding(.top, 56)
+                        .padding(.bottom, 24)
+                }
+            }
+
+            if !isPlaceholder {
+                AnswerActionBar(
+                    isSharing: isSharing,
+                    copy: copy,
+                    share: share
+                )
+                .padding(.trailing, 24)
+                .padding(.top, 16)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct AnswerActionBar: View {
+    let isSharing: Bool
+    let copy: () -> Void
+    let share: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Button {
+                copy()
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .help("Copy answer")
+
+            Button {
+                share()
+            } label: {
+                Group {
+                    if isSharing {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                }
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
+            }
+            .help("Share temporary page")
+            .disabled(isSharing)
+        }
+        .buttonStyle(.plain)
+        .font(.system(size: 17, weight: .regular))
+        .foregroundStyle(.secondary)
+        .padding(4)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 
