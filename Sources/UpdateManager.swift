@@ -147,6 +147,8 @@ struct UpdateManager {
     private func launchInstaller(currentAppURL: URL, mountedAppURL: URL, mountPoint: URL) throws {
         let scriptURL = FileManager.default.temporaryDirectory
             .appending(path: "solarlight-update-\(UUID().uuidString).sh")
+        // Stage the new app next to the old one, then swap atomically. If ditto
+        // fails (disk full, permissions), the existing install is untouched.
         let script = """
         #!/bin/sh
         set -e
@@ -155,13 +157,24 @@ struct UpdateManager {
         NEW_APP=\(shellQuoted(mountedAppURL.path))
         MOUNT_POINT=\(shellQuoted(mountPoint.path))
         APP_PID=\(getpid())
+        STAGING="$APP_PATH.update-$$"
+        BACKUP="$APP_PATH.old-$$"
 
         while kill -0 "$APP_PID" 2>/dev/null; do
           sleep 0.2
         done
 
-        rm -rf "$APP_PATH"
-        /usr/bin/ditto "$NEW_APP" "$APP_PATH"
+        /usr/bin/ditto "$NEW_APP" "$STAGING"
+        if [ -e "$APP_PATH" ]; then
+          mv "$APP_PATH" "$BACKUP"
+        fi
+        if mv "$STAGING" "$APP_PATH"; then
+          rm -rf "$BACKUP"
+        else
+          mv "$BACKUP" "$APP_PATH"
+          rm -rf "$STAGING"
+          exit 1
+        fi
         /usr/bin/hdiutil detach "$MOUNT_POINT" -quiet || true
         /usr/bin/open "$APP_PATH"
         rm -f "$0"

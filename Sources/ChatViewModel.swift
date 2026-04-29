@@ -83,7 +83,7 @@ final class ChatViewModel: ObservableObject {
         status = "Thinking"
         isStreaming = true
 
-        streamGeneration &+= 1
+        streamGeneration += 1
         let generation = streamGeneration
         let configuration = settings.snapshot()
 
