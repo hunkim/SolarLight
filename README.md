@@ -116,10 +116,7 @@ This build is not notarized. On first launch, macOS may ask users to confirm the
 
 ## GitHub Releases
 
-This repo includes a release workflow that builds `SolarLight.dmg`.
-
-- Run it manually from the GitHub Actions tab to download the DMG as a workflow artifact.
-- Push a version tag like `v0.1.0` to attach `SolarLight.dmg` to a GitHub Release.
+Releases are built, signed, notarized, and verified locally before uploading the DMG to GitHub. Do not use a GitHub Actions workflow for release builds, because the release artifact must be checked with macOS signing and Gatekeeper tools before it is published.
 
 ## Use
 
