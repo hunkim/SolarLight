@@ -15,13 +15,16 @@ enum ChatStreamEvent {
 struct ChatClient {
     enum ClientError: LocalizedError {
         case invalidURL
-        case badResponse(Int)
+        case badResponse(Int, String?)
 
         var errorDescription: String? {
             switch self {
             case .invalidURL:
                 return "The base URL is not valid."
-            case .badResponse(let statusCode):
+            case .badResponse(let statusCode, let detail):
+                if let detail, !detail.isEmpty {
+                    return "The API returned HTTP \(statusCode): \(detail)"
+                }
                 return "The API returned HTTP \(statusCode)."
             }
         }
@@ -76,7 +79,8 @@ struct ChatClient {
 
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
         if let httpResponse = response as? HTTPURLResponse, !(200..<300).contains(httpResponse.statusCode) {
-            throw ClientError.badResponse(httpResponse.statusCode)
+            let detail = try? await responseSnippet(from: bytes)
+            throw ClientError.badResponse(httpResponse.statusCode, detail)
         }
 
         return AsyncThrowingStream { continuation in
@@ -121,6 +125,25 @@ struct ChatClient {
             }
         }
     }
+
+    private func responseSnippet(from bytes: URLSession.AsyncBytes) async throws -> String? {
+        var lines: [String] = []
+        var length = 0
+
+        for try await line in bytes.lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+
+            lines.append(trimmed)
+            length += trimmed.count
+            if length >= 500 {
+                break
+            }
+        }
+
+        let snippet = lines.joined(separator: " ")
+        return snippet.isEmpty ? nil : String(snippet.prefix(500))
+    }
 }
 
 enum AppConfiguration {
@@ -156,10 +179,20 @@ enum AppConfiguration {
                 continue
             }
 
-            let key = String(line[..<separator]).trimmingCharacters(in: .whitespaces)
+            var key = String(line[..<separator]).trimmingCharacters(in: .whitespaces)
             var value = String(line[line.index(after: separator)...]).trimmingCharacters(in: .whitespaces)
 
+            if key.hasPrefix("export ") {
+                key.removeFirst("export ".count)
+                key = key.trimmingCharacters(in: .whitespaces)
+            }
+
             if value.count >= 2, value.first == "\"", value.last == "\"" {
+                value.removeFirst()
+                value.removeLast()
+            }
+
+            if value.count >= 2, value.first == "'", value.last == "'" {
                 value.removeFirst()
                 value.removeLast()
             }
