@@ -21,8 +21,8 @@ final class ChatSettings: ObservableObject {
 
         let loaded = AppConfiguration.load()
         self.apiKey = defaults.string(forKey: Keys.apiKey) ?? loaded["OPENAI_API_KEY"] ?? loaded["UPSTAGE_API_KEY"] ?? ""
-        self.baseURL = defaults.string(forKey: Keys.baseURL) ?? loaded["OPENAI_BASE_URL"] ?? SolarDefaults.baseURL
-        self.model = defaults.string(forKey: Keys.model) ?? loaded["OPENAI_MODEL"] ?? SolarDefaults.model
+        self.baseURL = defaults.string(forKey: Keys.baseURL) ?? loaded["OPENAI_BASE_URL"] ?? ""
+        self.model = defaults.string(forKey: Keys.model) ?? loaded["OPENAI_MODEL"] ?? ""
         self.runAtStartup = StartupManager.isEnabled
     }
 
@@ -45,11 +45,6 @@ final class ChatSettings: ObservableObject {
             runAtStartup = StartupManager.isEnabled
             startupError = error.localizedDescription
         }
-    }
-
-    func resetToSolarDefaults() {
-        baseURL = SolarDefaults.baseURL
-        model = SolarDefaults.model
     }
 
     func snapshot() -> ChatConfiguration {

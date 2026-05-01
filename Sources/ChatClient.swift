@@ -31,38 +31,19 @@ struct ChatClient {
     }
 
     private let apiKey: String
-    private let baseURL: URL
+    private let baseURL: String
     private let model: String
 
-    init(configuration: ChatConfiguration) throws {
-        guard let baseURL = URL(string: configuration.baseURL) else {
-            throw ClientError.invalidURL
-        }
-
+    init(configuration: ChatConfiguration) {
         self.apiKey = configuration.apiKey
-        self.baseURL = baseURL
-        self.model = configuration.model.isEmpty ? SolarDefaults.model : configuration.model
+        self.baseURL = configuration.baseURL
+        self.model = configuration.model
     }
 
     func streamChat(prompt: String) async throws -> AsyncThrowingStream<ChatStreamEvent, Error> {
-        let url = baseURL.appending(path: "chat/completions")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        if !apiKey.isEmpty {
-            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        }
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-
-        let body = ChatRequest(
-            model: model,
-            messages: [
-                .init(role: "system", content: "You are a concise desktop assistant. Answer directly and avoid unnecessary preamble."),
-                .init(role: "user", content: prompt)
-            ],
-            stream: true
-        )
-        request.httpBody = try JSONEncoder().encode(body)
+        let request = try apiKey.isEmpty
+            ? makeProxyRequest(prompt: prompt)
+            : makeOpenAIRequest(prompt: prompt)
 
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
         if let httpResponse = response as? HTTPURLResponse, !(200..<300).contains(httpResponse.statusCode) {
@@ -111,6 +92,39 @@ struct ChatClient {
                 task.cancel()
             }
         }
+    }
+
+    private func makeProxyRequest(prompt: String) throws -> URLRequest {
+        guard let url = URL(string: SolarDefaults.proxyURL)?.appending(path: "api/search-simple") else {
+            throw ClientError.invalidURL
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        request.httpBody = try JSONEncoder().encode(ProxyRequest(query: prompt))
+        return request
+    }
+
+    private func makeOpenAIRequest(prompt: String) throws -> URLRequest {
+        guard let base = URL(string: baseURL) else {
+            throw ClientError.invalidURL
+        }
+        var request = URLRequest(url: base.appending(path: "chat/completions"))
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        let body = ChatRequest(
+            model: model,
+            messages: [
+                .init(role: "system", content: "You are a concise desktop assistant. Answer directly and avoid unnecessary preamble."),
+                .init(role: "user", content: prompt)
+            ],
+            stream: true
+        )
+        request.httpBody = try JSONEncoder().encode(body)
+        return request
     }
 
     private func responseSnippet(from bytes: URLSession.AsyncBytes) async throws -> String? {
@@ -189,6 +203,10 @@ enum AppConfiguration {
 
         return result
     }
+}
+
+private struct ProxyRequest: Encodable {
+    let query: String
 }
 
 private struct ChatRequest: Encodable {
