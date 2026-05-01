@@ -490,21 +490,29 @@ struct SettingsView: View {
             }
 
             VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("OpenAI-compatible API (optional)")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("Leave blank to use the built-in default.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+
                 LabeledContent("API Key") {
-                    SecureField("up_...", text: $settings.apiKey)
+                    SecureField("sk-...", text: $settings.apiKey)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 360)
                         .focused($isAPIKeyFocused)
                 }
 
                 LabeledContent("Base URL") {
-                    TextField(SolarDefaults.baseURL, text: $settings.baseURL)
+                    TextField("https://api.example.com/v1", text: $settings.baseURL)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 360)
                 }
 
                 LabeledContent("Model") {
-                    TextField(SolarDefaults.model, text: $settings.model)
+                    TextField("model-name", text: $settings.model)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 360)
                 }
@@ -524,10 +532,6 @@ struct SettingsView: View {
             }
 
             HStack {
-                Button("Solar Defaults") {
-                    settings.resetToSolarDefaults()
-                }
-
                 Spacer()
 
                 Button("Save") {

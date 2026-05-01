@@ -133,7 +133,7 @@ final class ChatViewModel: ObservableObject {
 
         streamTask = Task { [weak self] in
             do {
-                let client = try ChatClient(configuration: configuration)
+                let client = ChatClient(configuration: configuration)
                 let stream = try await client.streamChat(prompt: prompt)
 
                 var pending = ""
