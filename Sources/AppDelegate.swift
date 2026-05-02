@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panelController: SpotlightPanelController?
     private var hotKeyManager: HotKeyManager?
     private var statusItem: NSStatusItem?
+    private var onboardingController: OnboardingWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -22,14 +23,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         installMenuBarItem()
 
-        DispatchQueue.main.async {
-            controller.show()
+        if OnboardingWindowController.hasCompleted {
+            DispatchQueue.main.async {
+                controller.show()
+            }
+        } else {
+            presentOnboarding()
         }
+    }
+
+    private func presentOnboarding() {
+        // Promote to a regular app while the welcome window is visible so it
+        // takes focus and shows in the Dock; revert to accessory afterwards.
+        NSApp.setActivationPolicy(.regular)
+
+        let controller = OnboardingWindowController { [weak self] in
+            guard let self else { return }
+            NSApp.setActivationPolicy(.accessory)
+            self.onboardingController = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                self.panelController?.show()
+            }
+        }
+        onboardingController = controller
+        controller.show()
     }
 
     private func installMenuBarItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "sparkle.magnifyingglass", accessibilityDescription: "SolarLight")
+        item.button?.image = MenuBarIcon.make()
 
         let menu = NSMenu()
         let openItem = NSMenuItem(title: "Open SolarLight", action: #selector(openPanel), keyEquivalent: "l")
