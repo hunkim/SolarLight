@@ -55,6 +55,7 @@ struct FileIndexStatus: Equatable {
         case scanning
         case uploading(current: Int, total: Int)
         case waitingForIndexing(current: Int, total: Int)
+        case cleaningUp(current: Int, total: Int)
         case error(String)
     }
 
@@ -131,6 +132,9 @@ final class FileIndexManager: ObservableObject {
     // MARK: - Configuration changes
 
     /// Update credentials/folder. Triggers re-sync only when the folder changes.
+    /// On folder change we also purge the previous folder's files from the
+    /// remote vector store + Files API so they don't pollute searches or
+    /// silently consume the per-store quota.
     func configure(apiKey: String, folder: URL) async {
         let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
@@ -142,15 +146,49 @@ final class FileIndexManager: ObservableObject {
 
         let normalized = folder.standardizedFileURL.path
         if manifest.folderPath != normalized {
+            // Cancel any in-flight sync of the OLD folder before purging.
+            syncTask?.cancel()
+            await syncTask?.value
+            syncTask = nil
+
+            await purgeRemoteEntries()
+
             manifest.folderPath = normalized
-            // Folder change invalidates entries (paths are relative to the folder).
-            manifest.entries.removeAll()
             // Reset sync timestamp so the next start triggers a full initial sync.
             status.lastSyncAt = nil
             status.totalFiles = 0
             status.indexedFiles = 0
+            status.phase = .idle
             persist()
         }
+    }
+
+    /// Delete every tracked file from the remote vector store and Files API,
+    /// then clear local entries. Best-effort: individual delete failures are
+    /// ignored so a transient network blip doesn't leave us stuck.
+    private func purgeRemoteEntries() async {
+        let entries = manifest.entries
+        guard !entries.isEmpty else { return }
+
+        let total = entries.count
+        let vectorStoreId = manifest.vectorStoreId
+        let client = self.client
+
+        for (offset, entry) in entries.enumerated() {
+            status.phase = .cleaningUp(current: offset + 1, total: total)
+            if let client {
+                if let vectorStoreId {
+                    try? await client.removeFileFromVectorStore(
+                        vectorStoreId: vectorStoreId,
+                        fileId: entry.fileId
+                    )
+                }
+                try? await client.deleteFile(id: entry.fileId)
+            }
+        }
+
+        manifest.entries.removeAll()
+        persist()
     }
 
     /// Begin watching the configured folder via FSEvents and run a catch-up
@@ -216,7 +254,8 @@ final class FileIndexManager: ObservableObject {
     // MARK: - Sync
 
     /// Run a full sync: scan the folder, upload new/changed files, and remove
-    /// entries whose local files have disappeared.
+    /// entries whose local files have disappeared. Folder switches are
+    /// handled by `configure()`; this method trusts the manifest is current.
     func sync(folder: URL) {
         guard let client else {
             status.phase = .error("Upstage API key not configured.")
@@ -227,12 +266,6 @@ final class FileIndexManager: ObservableObject {
         }
         isSyncing = true
         status.phase = .scanning
-
-        let folderPath = folder.standardizedFileURL.path
-        if manifest.folderPath != folderPath {
-            manifest.folderPath = folderPath
-            manifest.entries.removeAll()
-        }
 
         syncTask = Task { [weak self] in
             await self?.performSync(client: client, folder: folder)

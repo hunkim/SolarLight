@@ -1127,6 +1127,8 @@ struct SettingsView: View {
             return "Uploading \(current)/\(total)…"
         case .waitingForIndexing(let current, let total):
             return "Waiting for indexing \(current)/\(total)…"
+        case .cleaningUp(let current, let total):
+            return "Removing previous folder \(current)/\(total)…"
         case .error(let message):
             return "Error: \(message)"
         }
