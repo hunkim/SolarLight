@@ -114,7 +114,7 @@ final class FileIndexManager: ObservableObject {
     /// Returns true if file search is configured and at least one file finished
     /// indexing (so a search would have something to match).
     var isReady: Bool {
-        manifest.vectorStoreId != nil && status.indexedFiles > 0
+        client != nil && manifest.vectorStoreId != nil && status.indexedFiles > 0
     }
 
     var vectorStoreId: String? { manifest.vectorStoreId }

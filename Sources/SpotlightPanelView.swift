@@ -1064,6 +1064,9 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Toggle("Enable file search", isOn: $settings.isFileSearchEnabled)
+                .padding(.top, 2)
+
             LabeledContent("Upstage API Key") {
                 SecureField("up_...", text: $settings.upstageAPIKey)
                     .textFieldStyle(.roundedBorder)
@@ -1091,7 +1094,7 @@ struct SettingsView: View {
                         Text("Index Now")
                     }
                 }
-                .disabled(!settings.hasFileSearchKey || fileIndex.isSyncing)
+                .disabled(!settings.isFileSearchEnabled || !settings.hasFileSearchKey || fileIndex.isSyncing)
 
                 Text(statusText)
                     .font(.system(size: 12))
@@ -1107,6 +1110,10 @@ struct SettingsView: View {
     }
 
     private var statusText: String {
+        guard settings.isFileSearchEnabled else {
+            return "Off. Your local files are not indexed."
+        }
+
         switch fileIndex.status.phase {
         case .idle:
             if fileIndex.status.totalFiles == 0 {

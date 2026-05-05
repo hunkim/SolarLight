@@ -55,7 +55,8 @@ final class ChatViewModel: ObservableObject {
     /// the FSEvents watcher and runs an initial sync when needed.
     func applyFileSearchSettings() async {
         let snapshot = settings.fileSearchSnapshot()
-        await fileIndex.configure(apiKey: snapshot.apiKey, folder: snapshot.folderURL)
+        let apiKey = snapshot.isEnabled ? snapshot.apiKey : ""
+        await fileIndex.configure(apiKey: apiKey, folder: snapshot.folderURL)
         if snapshot.isEnabled {
             fileIndex.startWatching(folder: snapshot.folderURL)
         } else {

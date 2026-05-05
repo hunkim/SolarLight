@@ -7,10 +7,9 @@ struct ChatConfiguration {
 }
 
 struct FileSearchConfiguration {
+    let isEnabled: Bool
     let apiKey: String
     let folderURL: URL
-
-    var isEnabled: Bool { !apiKey.isEmpty }
 }
 
 @MainActor
@@ -22,6 +21,7 @@ final class ChatSettings: ObservableObject {
     @Published var startupError: String?
 
     @Published var upstageAPIKey: String
+    @Published var isFileSearchEnabled: Bool
     @Published var fileSearchFolderPath: String
 
     private let defaults: UserDefaults
@@ -39,6 +39,7 @@ final class ChatSettings: ObservableObject {
             ?? loaded["UPSTAGE_FILE_SEARCH_API_KEY"]
             ?? loaded["UPSTAGE_API_KEY"]
             ?? ""
+        self.isFileSearchEnabled = defaults.bool(forKey: Keys.fileSearchEnabled)
         self.fileSearchFolderPath = defaults.string(forKey: Keys.fileSearchFolderPath)
             ?? FileIndexManager.defaultFolderURL().path
     }
@@ -48,6 +49,7 @@ final class ChatSettings: ObservableObject {
         defaults.set(baseURL.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Keys.baseURL)
         defaults.set(model.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Keys.model)
         defaults.set(upstageAPIKey.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Keys.upstageAPIKey)
+        defaults.set(isFileSearchEnabled, forKey: Keys.fileSearchEnabled)
         defaults.set(fileSearchFolderPath.trimmingCharacters(in: .whitespacesAndNewlines), forKey: Keys.fileSearchFolderPath)
     }
 
@@ -80,7 +82,11 @@ final class ChatSettings: ObservableObject {
         let folder = path.isEmpty
             ? FileIndexManager.defaultFolderURL()
             : URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
-        return FileSearchConfiguration(apiKey: trimmedKey, folderURL: folder)
+        return FileSearchConfiguration(
+            isEnabled: isFileSearchEnabled && !trimmedKey.isEmpty,
+            apiKey: trimmedKey,
+            folderURL: folder
+        )
     }
 
     var hasAPIKey: Bool {
@@ -97,5 +103,6 @@ private enum Keys {
     static let baseURL = "baseURL"
     static let model = "model"
     static let upstageAPIKey = "upstageFileSearchAPIKey"
+    static let fileSearchEnabled = "fileSearchEnabled"
     static let fileSearchFolderPath = "fileSearchFolderPath"
 }
