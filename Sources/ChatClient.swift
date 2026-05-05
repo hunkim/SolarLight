@@ -1,10 +1,33 @@
 import Foundation
 
 struct ChatCitation: Identifiable, Equatable {
-    var id: String { url.absoluteString }
+    enum Kind: Equatable {
+        case web
+        case file(snippet: String)
+    }
+
+    var id: String {
+        switch kind {
+        case .web:
+            return "web:" + url.absoluteString
+        case .file:
+            return "file:" + url.absoluteString
+        }
+    }
 
     let title: String
     let url: URL
+    var kind: Kind = .web
+
+    var isFile: Bool {
+        if case .file = kind { return true }
+        return false
+    }
+
+    var snippet: String? {
+        if case .file(let snippet) = kind { return snippet }
+        return nil
+    }
 }
 
 enum ChatStreamEvent {

@@ -4,10 +4,15 @@ import Foundation
 @MainActor
 final class ChatViewModel: ObservableObject {
     let settings = ChatSettings()
+    let fileIndex = FileIndexManager()
 
     @Published var query = ""
     @Published var response = ""
-    @Published var citations: [ChatCitation] = []
+    @Published var webCitations: [ChatCitation] = []
+    @Published var fileCitations: [ChatCitation] = []
+    @Published var ragAnswer: String = ""
+    @Published var ragCitations: [ChatCitation] = []
+    @Published var ragState: RAGState = .idle
     @Published var status = "Type a question"
     @Published var isStreaming = false
     @Published var isShowingSettings = false
@@ -17,11 +22,53 @@ final class ChatViewModel: ObservableObject {
     @Published var isUpdating = false
     @Published var isSharing = false
 
+    /// Convenience for consumers (share/copy) that want the whole reference set.
+    var citations: [ChatCitation] { webCitations + fileCitations + ragCitations }
+
     private var streamTask: Task<Void, Never>?
+    private var fileSearchTask: Task<Void, Never>?
+    private var ragTask: Task<Void, Never>?
     private var debounceTask: Task<Void, Never>?
     private var updateCheckTask: Task<Void, Never>?
     private var streamGeneration = 0
     private let updateManager = UpdateManager()
+
+    /// Top file-search score required before we burn an LLM call on synthesis.
+    /// Tuned conservatively; revisit once we have feel for typical scores.
+    private static let ragScoreThreshold: Double = 0.3
+
+    enum RAGState: Equatable {
+        case idle
+        case synthesizing
+        case ready
+        case failed
+    }
+
+    init() {
+        Task { [weak self] in
+            await self?.applyFileSearchSettings()
+        }
+    }
+
+    /// Push current settings into the file index manager. Call after the
+    /// settings sheet closes or when credentials change. Starts (or restarts)
+    /// the FSEvents watcher and runs an initial sync when needed.
+    func applyFileSearchSettings() async {
+        let snapshot = settings.fileSearchSnapshot()
+        let apiKey = snapshot.isEnabled ? snapshot.apiKey : ""
+        await fileIndex.configure(apiKey: apiKey, folder: snapshot.folderURL)
+        if snapshot.isEnabled {
+            fileIndex.startWatching(folder: snapshot.folderURL)
+        } else {
+            fileIndex.stopWatching()
+        }
+    }
+
+    func indexNow() {
+        let snapshot = settings.fileSearchSnapshot()
+        guard snapshot.isEnabled else { return }
+        fileIndex.sync(folder: snapshot.folderURL)
+    }
 
     func prepareForPresentation() {
         focusToken = UUID()
@@ -52,6 +99,9 @@ final class ChatViewModel: ObservableObject {
             response = ""
             status = query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Type a question" : "Ready"
         }
+        Task { [weak self] in
+            await self?.applyFileSearchSettings()
+        }
     }
 
     func copyResponse() {
@@ -72,13 +122,16 @@ final class ChatViewModel: ObservableObject {
         status = "Sharing"
 
         let title = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let currentCitations = citations
+        // Share only the web answer + web citations. Local file content and
+        // RAG synthesis stay on-device — they may contain personal data.
+        let webRefs = webCitations
         Task { [weak self] in
             do {
                 let url = try await LitterboxShareClient.share(
                     title: title.isEmpty ? "SolarLight Answer" : title,
                     markdown: trimmed,
-                    citations: currentCitations
+                    webCitations: webRefs,
+                    fileCitations: []
                 )
                 await MainActor.run {
                     let pasteboard = NSPasteboard.general
@@ -102,8 +155,14 @@ final class ChatViewModel: ObservableObject {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             streamTask?.cancel()
+            fileSearchTask?.cancel()
+            ragTask?.cancel()
             response = ""
-            citations = []
+            webCitations = []
+            fileCitations = []
+            ragAnswer = ""
+            ragCitations = []
+            ragState = .idle
             status = "Type a question"
             isStreaming = false
             return
@@ -122,14 +181,22 @@ final class ChatViewModel: ObservableObject {
 
         debounceTask?.cancel()
         streamTask?.cancel()
+        fileSearchTask?.cancel()
+        ragTask?.cancel()
         response = ""
-        citations = []
+        webCitations = []
+        fileCitations = []
+        ragAnswer = ""
+        ragCitations = []
+        ragState = .idle
         status = "Thinking"
         isStreaming = true
 
         streamGeneration += 1
         let generation = streamGeneration
         let configuration = settings.snapshot()
+
+        startFileSearch(prompt: prompt, generation: generation)
 
         streamTask = Task { [weak self] in
             do {
@@ -143,10 +210,10 @@ final class ChatViewModel: ObservableObject {
                     if Task.isCancelled { return }
 
                     switch event {
-                    case .citations(let citations):
+                    case .citations(let newCitations):
                         await MainActor.run {
                             guard let self, self.streamGeneration == generation else { return }
-                            self.mergeCitations(citations)
+                            self.mergeWebCitations(newCitations)
                             self.status = "Found references"
                         }
                     case .content(let token):
@@ -184,11 +251,84 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    private func mergeCitations(_ newCitations: [ChatCitation]) {
-        var seen = Set(citations.map(\.url))
-        for citation in newCitations where !seen.contains(citation.url) {
-            citations.append(citation)
-            seen.insert(citation.url)
+    private func mergeWebCitations(_ newCitations: [ChatCitation]) {
+        var seenIds = Set(webCitations.map(\.id))
+        for citation in newCitations where !seenIds.contains(citation.id) {
+            webCitations.append(citation)
+            seenIds.insert(citation.id)
+        }
+    }
+
+    /// Run file search in parallel with the chat stream. Results are written
+    /// directly into `fileCitations` and rendered below the answer pane. When
+    /// the top match is sufficiently relevant we also kick off RAG synthesis.
+    /// Failures are swallowed; web search remains the source of truth.
+    private func startFileSearch(prompt: String, generation: Int) {
+        guard fileIndex.isReady else { return }
+
+        fileSearchTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let matches = try await self.fileIndex.search(query: prompt, maxResults: 5)
+                if Task.isCancelled { return }
+                let citations = matches.compactMap { $0.toCitation() }
+                let topScore = matches.map(\.score).max() ?? 0
+                await MainActor.run {
+                    guard self.streamGeneration == generation else { return }
+                    self.fileCitations = citations
+                    if topScore >= Self.ragScoreThreshold {
+                        self.startRAGSynthesis(prompt: prompt, generation: generation)
+                    }
+                }
+            } catch {
+                // Silent failure — web answer continues unaffected.
+            }
+        }
+    }
+
+    /// Synthesize an answer grounded in the user's vector store via the
+    /// Upstage Responses API. Runs only when the file search returned at
+    /// least one match above the score threshold.
+    private func startRAGSynthesis(prompt: String, generation: Int) {
+        let apiKey = settings.upstageAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !apiKey.isEmpty, let vectorStoreId = fileIndex.vectorStoreId else { return }
+
+        ragState = .synthesizing
+        ragAnswer = ""
+        ragCitations = []
+
+        let fileIndex = self.fileIndex
+        ragTask = Task { [weak self] in
+            do {
+                let client = RAGClient(apiKey: apiKey)
+                let answer = try await client.synthesize(query: prompt, vectorStoreId: vectorStoreId)
+                if Task.isCancelled { return }
+
+                // Resolve file_id citations to local URLs so they're clickable.
+                var resolved: [ChatCitation] = []
+                for citation in answer.citations {
+                    if let url = fileIndex.localURL(forFileId: citation.fileId) {
+                        resolved.append(ChatCitation(
+                            title: citation.filename,
+                            url: url,
+                            kind: .file(snippet: citation.quote ?? "")
+                        ))
+                    }
+                }
+
+                await MainActor.run {
+                    guard let self, self.streamGeneration == generation else { return }
+                    self.ragAnswer = answer.text
+                    self.ragCitations = resolved
+                    self.ragState = .ready
+                }
+            } catch {
+                if Task.isCancelled { return }
+                await MainActor.run {
+                    guard let self, self.streamGeneration == generation else { return }
+                    self.ragState = .failed
+                }
+            }
         }
     }
 
@@ -217,7 +357,12 @@ final class ChatViewModel: ObservableObject {
 private enum LitterboxShareClient {
     private static let uploadURL = URL(string: "https://litterbox.catbox.moe/resources/internals/api.php")!
 
-    static func share(title: String, markdown: String, citations: [ChatCitation]) async throws -> URL {
+    static func share(
+        title: String,
+        markdown: String,
+        webCitations: [ChatCitation],
+        fileCitations: [ChatCitation]
+    ) async throws -> URL {
         let boundary = "SolarLightBoundary-\(UUID().uuidString)"
         var request = URLRequest(url: uploadURL)
         request.httpMethod = "POST"
@@ -229,7 +374,12 @@ private enum LitterboxShareClient {
                 "time": "1h"
             ],
             fileName: "answer.html",
-            fileData: html(title: title, markdown: markdown, citations: citations).data(using: .utf8) ?? Data()
+            fileData: html(
+                title: title,
+                markdown: markdown,
+                webCitations: webCitations,
+                fileCitations: fileCitations
+            ).data(using: .utf8) ?? Data()
         )
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -272,25 +422,51 @@ private enum LitterboxShareClient {
         return data
     }
 
-    private static func html(title: String, markdown: String, citations: [ChatCitation]) -> String {
+    private static func html(
+        title: String,
+        markdown: String,
+        webCitations: [ChatCitation],
+        fileCitations: [ChatCitation]
+    ) -> String {
+        let renderInline: (String) -> String = { text in
+            inlineHTML(text, webCitations: webCitations, fileCitations: fileCitations)
+        }
+
         let body = markdown.components(separatedBy: .newlines).map { rawLine -> String in
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             guard !line.isEmpty else { return "" }
 
-            if line.hasPrefix("### ") { return "<h3>\(inlineHTML(String(line.dropFirst(4)), citations: citations))</h3>" }
-            if line.hasPrefix("## ") { return "<h2>\(inlineHTML(String(line.dropFirst(3)), citations: citations))</h2>" }
-            if line.hasPrefix("# ") { return "<h1>\(inlineHTML(String(line.dropFirst(2)), citations: citations))</h1>" }
+            if line.hasPrefix("### ") { return "<h3>\(renderInline(String(line.dropFirst(4))))</h3>" }
+            if line.hasPrefix("## ") { return "<h2>\(renderInline(String(line.dropFirst(3))))</h2>" }
+            if line.hasPrefix("# ") { return "<h1>\(renderInline(String(line.dropFirst(2))))</h1>" }
             if line.hasPrefix("- ") || line.hasPrefix("* ") {
-                return "<p>&bull; \(inlineHTML(String(line.dropFirst(2)), citations: citations))</p>"
+                return "<p>&bull; \(renderInline(String(line.dropFirst(2))))</p>"
             }
-            return "<p>\(inlineHTML(line, citations: citations))</p>"
+            return "<p>\(renderInline(line))</p>"
         }.joined(separator: "\n")
 
-        let references = citations.enumerated().map { index, citation in
+        let webRefs = webCitations.enumerated().map { index, citation in
             """
             <li><a href="\(escape(citation.url.absoluteString))">\(index + 1). \(escape(citation.title))</a><br><span>\(escape(citation.url.host() ?? citation.url.absoluteString))</span></li>
             """
         }.joined(separator: "\n")
+
+        let fileRefs = fileCitations.enumerated().map { index, citation in
+            """
+            <li><a href="\(escape(citation.url.absoluteString))">L\(index + 1). \(escape(citation.title))</a><br><span>Local file</span></li>
+            """
+        }.joined(separator: "\n")
+
+        let referencesBlock: String = {
+            var parts: [String] = []
+            if !webRefs.isEmpty {
+                parts.append("<ol>\(webRefs)</ol>")
+            }
+            if !fileRefs.isEmpty {
+                parts.append("<h3>Local files</h3><ol>\(fileRefs)</ol>")
+            }
+            return parts.joined(separator: "\n")
+        }()
 
         return """
         <!doctype html>
@@ -328,9 +504,7 @@ private enum LitterboxShareClient {
             \(body)
             <section class="refs">
               <h2>References</h2>
-              <ol>
-                \(references)
-              </ol>
+              \(referencesBlock)
             </section>
             <footer>
               Powered by <a href="https://github.com/hunkim/SolarLight">SolarLight</a>
@@ -341,7 +515,11 @@ private enum LitterboxShareClient {
         """
     }
 
-    private static func inlineHTML(_ text: String, citations: [ChatCitation]) -> String {
+    private static func inlineHTML(
+        _ text: String,
+        webCitations: [ChatCitation],
+        fileCitations: [ChatCitation]
+    ) -> String {
         var result = ""
         var index = text.startIndex
         var isStrong = false
@@ -356,9 +534,17 @@ private enum LitterboxShareClient {
 
             if text[index] == "[", let close = text[index...].firstIndex(of: "]") {
                 let value = String(text[text.index(after: index)..<close])
-                if let number = Int(value), citations.indices.contains(number - 1) {
-                    let citation = citations[number - 1]
-                    result += "<a href=\"\(escape(citation.url.absoluteString))\">[\(number)]</a>"
+                if let n = Int(value), webCitations.indices.contains(n - 1) {
+                    let citation = webCitations[n - 1]
+                    result += "<a href=\"\(escape(citation.url.absoluteString))\">[\(n)]</a>"
+                    index = text.index(after: close)
+                    continue
+                }
+                if (value.first == "L" || value.first == "l"),
+                   let n = Int(value.dropFirst()),
+                   fileCitations.indices.contains(n - 1) {
+                    let citation = fileCitations[n - 1]
+                    result += "<a href=\"\(escape(citation.url.absoluteString))\">[L\(n)]</a>"
                     index = text.index(after: close)
                     continue
                 }
