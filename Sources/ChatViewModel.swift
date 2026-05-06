@@ -65,9 +65,13 @@ final class ChatViewModel: ObservableObject {
     }
 
     func indexNow() {
-        let snapshot = settings.fileSearchSnapshot()
-        guard snapshot.isEnabled else { return }
-        fileIndex.sync(folder: snapshot.folderURL)
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.applyFileSearchSettings()
+            let snapshot = self.settings.fileSearchSnapshot()
+            guard snapshot.isEnabled else { return }
+            self.fileIndex.sync(folder: snapshot.folderURL)
+        }
     }
 
     func prepareForPresentation() {

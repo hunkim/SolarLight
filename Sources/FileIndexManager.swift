@@ -142,7 +142,8 @@ final class FileIndexManager: ObservableObject {
             stopWatching()
             return
         }
-        client = UpstageFileSearchClient(apiKey: trimmed)
+        let previousClient = client
+        let configuredClient = UpstageFileSearchClient(apiKey: trimmed)
 
         let normalized = folder.standardizedFileURL.path
         if manifest.folderPath != normalized {
@@ -151,7 +152,8 @@ final class FileIndexManager: ObservableObject {
             await syncTask?.value
             syncTask = nil
 
-            await purgeRemoteEntries()
+            isSyncing = true
+            await purgeRemoteEntries(using: previousClient ?? configuredClient)
 
             manifest.folderPath = normalized
             // Reset sync timestamp so the next start triggers a full initial sync.
@@ -159,32 +161,32 @@ final class FileIndexManager: ObservableObject {
             status.totalFiles = 0
             status.indexedFiles = 0
             status.phase = .idle
+            isSyncing = false
             persist()
         }
+
+        client = configuredClient
     }
 
     /// Delete every tracked file from the remote vector store and Files API,
     /// then clear local entries. Best-effort: individual delete failures are
     /// ignored so a transient network blip doesn't leave us stuck.
-    private func purgeRemoteEntries() async {
+    private func purgeRemoteEntries(using client: UpstageFileSearchClient) async {
         let entries = manifest.entries
         guard !entries.isEmpty else { return }
 
         let total = entries.count
         let vectorStoreId = manifest.vectorStoreId
-        let client = self.client
 
         for (offset, entry) in entries.enumerated() {
             status.phase = .cleaningUp(current: offset + 1, total: total)
-            if let client {
-                if let vectorStoreId {
-                    try? await client.removeFileFromVectorStore(
-                        vectorStoreId: vectorStoreId,
-                        fileId: entry.fileId
-                    )
-                }
-                try? await client.deleteFile(id: entry.fileId)
+            if let vectorStoreId {
+                try? await client.removeFileFromVectorStore(
+                    vectorStoreId: vectorStoreId,
+                    fileId: entry.fileId
+                )
             }
+            try? await client.deleteFile(id: entry.fileId)
         }
 
         manifest.entries.removeAll()

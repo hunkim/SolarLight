@@ -1085,7 +1085,6 @@ struct SettingsView: View {
             HStack(spacing: 10) {
                 Button {
                     settings.save()
-                    applyFileSearchSettings()
                     indexNow()
                 } label: {
                     if fileIndex.isSyncing {
