@@ -10,7 +10,7 @@ A tiny macOS Spotlight-style chat app for Solar and other OpenAI-compatible stre
 ## Download and Install
 
 1. Open the [latest SolarLight release](https://github.com/hunkim/SolarLight/releases/latest).
-2. Download the `.dmg` file, for example `SolarLight-0.2.7.dmg`.
+2. Download the `.dmg` file, for example `SolarLight-0.3.0.dmg`.
 3. Open the DMG.
 4. Drag `SolarLight.app` into the Applications folder.
 5. Open SolarLight from Applications.
